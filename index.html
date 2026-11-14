@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -29,9 +30,9 @@ const canvas=document.getElementById('gameCanvas'),ctx=canvas.getContext('2d'),s
 let width=canvas.width=window.innerWidth,height=canvas.height=window.innerHeight;
 window.addEventListener('resize',()=>{width=canvas.width=window.innerWidth;height=canvas.height=window.innerHeight});
 let score=0,isGameOver=false;
-const MOVE_SPEED=3.2;
+const TOUCH_SENS=1.15,KEY_SPEED=4.5;
 const player={x:width/2-25,y:height-150,radius:25,vx:0,vy:0,gravity:0.38,jumpPower:-11.5,jetpackTimer:0};
-let platforms=[],brokenPieces=[];
+let platforms=[],brokenPieces=[],lastTouchX=null;
 const pCount=8,pW=90,pH=20;
 
 function genPlatform(yPos,isStart){
@@ -109,16 +110,25 @@ if(player.jetpackTimer>0)drawHeli(cx,player.y,true);
 ctx.restore();
 }
 
-function handleTouch(e){
-if(e.touches&&e.touches.length>0){
-const tx=e.touches[0].clientX;
-player.vx=tx<width/2?-MOVE_SPEED:MOVE_SPEED;
+function clampPlayerX(){
+if(player.x<0)player.x=0;
+if(player.x+player.radius*2>width)player.x=width-player.radius*2;
 }
+
+window.addEventListener('touchstart',e=>{
+if(e.touches&&e.touches.length>0)lastTouchX=e.touches[0].clientX;
+});
+window.addEventListener('touchmove',e=>{
+if(e.touches&&e.touches.length>0&&lastTouchX!==null){
+const currentX=e.touches[0].clientX;
+const deltaX=currentX-lastTouchX;
+player.x+=deltaX*TOUCH_SENS;
+clampPlayerX();
+lastTouchX=currentX;
 }
-window.addEventListener('touchstart',handleTouch);
-window.addEventListener('touchmove',handleTouch);
-window.addEventListener('touchend',()=>{player.vx=0});
-window.addEventListener('keydown',e=>{if(e.key==='ArrowLeft')player.vx=-MOVE_SPEED;if(e.key==='ArrowRight')player.vx=MOVE_SPEED});
+});
+window.addEventListener('touchend',()=>{lastTouchX=null});
+window.addEventListener('keydown',e=>{if(e.key==='ArrowLeft')player.vx=-KEY_SPEED;if(e.key==='ArrowRight')player.vx=KEY_SPEED});
 window.addEventListener('keyup',()=>{player.vx=0});
 
 function update(){
@@ -126,8 +136,7 @@ if(isGameOver)return;
 ctx.clearRect(0,0,width,height);
 if(player.jetpackTimer>0){player.jetpackTimer--;player.vy=-14}else{player.vy+=player.gravity}
 player.x+=player.vx;player.y+=player.vy;
-const cx=player.x+player.radius;
-if(cx<0)player.x=width-player.radius;else if(cx>width)player.x=-player.radius;
+clampPlayerX();
 
 if(player.y<height/2&&player.vy<0){
 player.y=height/2;
@@ -168,7 +177,7 @@ requestAnimationFrame(update);
 
 function resetGame(){
 score=0;scoreEl.innerText=score;isGameOver=false;overEl.style.display='none';
-player.x=width/2-25;player.y=height-150;player.vy=0;player.vx=0;player.jetpackTimer=0;
+player.x=width/2-25;player.y=height-150;player.vy=0;player.vx=0;player.jetpackTimer=0;lastTouchX=null;
 createPlatforms();update();
 }
 createPlatforms();update();
