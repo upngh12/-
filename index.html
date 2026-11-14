@@ -1,0 +1,29 @@
+import asyncio
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import CommandStart
+from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
+
+# Вставьте сюда токен от @BotFather
+BOT_TOKEN = "ВАШ_ТОКЕН_БОТА"
+# Вставьте сюда ссылку на ваш загруженный файл index.html (обязательно HTTPS)
+GAME_URL = "https://github.io"
+
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
+
+@dp.message(CommandStart())
+async def start_cmd(message: types.Message):
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🐊 Играть", web_app=WebAppInfo(url=GAME_URL))]
+    ])
+    await message.answer(
+        "Привет! Жми на кнопку ниже, чтобы начать прыгать по крокодилам:",
+        reply_markup=keyboard
+    )
+
+async def main():
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+    
