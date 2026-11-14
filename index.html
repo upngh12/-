@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -7,24 +6,30 @@
     <title>Crocodile Jump</title>
     <script src="https://telegram.org"></script>
     <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
         body {
             margin: 0;
             padding: 0;
             overflow: hidden;
             background-color: #d4f7b8;
-            font-family: 'Arial', sans-serif;
+            font-family: Arial, sans-serif;
             touch-action: none;
         }
         canvas {
             display: block;
-            margin: 0 auto;
+            width: 100vw;
+            height: 100vh;
         }
         #score {
             position: absolute;
-            top: 20px;
+            top: 25px;
             width: 100%;
             text-align: center;
-            font-size: 48px;
+            font-size: 52px;
             font-weight: bold;
             color: #222;
             pointer-events: none;
@@ -36,12 +41,14 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: rgba(255, 255, 255, 0.9);
-            padding: 30px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px 40px;
             border-radius: 20px;
             text-align: center;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.25);
             z-index: 20;
+            width: 80%;
+            max-width: 320px;
         }
         button {
             background: #76c838;
@@ -53,6 +60,7 @@
             cursor: pointer;
             margin-top: 15px;
             font-weight: bold;
+            width: 100%;
         }
     </style>
 </head>
@@ -60,15 +68,18 @@
 
 <div id="score">0</div>
 <div id="game-over">
-    <h2>Игра окончена!</h2>
-    <p id="final-score">Счёт: 0</p>
+    <h2 style="margin-top:0;">Игра окончена!</h2>
+    <p id="final-score" style="font-size:20px;">Счёт: 0</p>
     <button onclick="resetGame()">Играть снова</button>
 </div>
 <canvas id="gameCanvas"></canvas>
 
 <script>
-    const tg = window.Telegram.WebApp;
-    tg.expand();
+    const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+    if (tg) {
+        tg.ready();
+        tg.expand();
+    }
 
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
@@ -76,15 +87,20 @@
     const gameOverScreen = document.getElementById('game-over');
     const finalScoreElement = document.getElementById('final-score');
 
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    let width = canvas.width = window.innerWidth;
+    let height = canvas.height = window.innerHeight;
+
+    window.addEventListener('resize', () => {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+    });
 
     let score = 0;
     let isGameOver = false;
 
     const player = {
-        x: canvas.width / 2 - 25,
-        y: canvas.height - 150,
+        x: width / 2 - 25,
+        y: height - 150,
         radius: 25,
         vx: 0,
         vy: 0,
@@ -100,16 +116,16 @@
     function createPlatforms() {
         platforms = [];
         platforms.push({
-            x: canvas.width / 2 - platformWidth / 2,
-            y: canvas.height - 80,
+            x: width / 2 - platformWidth / 2,
+            y: height - 80,
             width: platformWidth,
             height: platformHeight
         });
 
         for (let i = 1; i < platformCount; i++) {
             platforms.push({
-                x: Math.random() * (canvas.width - platformWidth),
-                y: canvas.height - (i * (canvas.height / platformCount)) - 80,
+                x: Math.random() * (width - platformWidth),
+                y: height - (i * (height / platformCount)) - 80,
                 width: platformWidth,
                 height: platformHeight
             });
@@ -121,11 +137,23 @@
         ctx.strokeStyle = '#1a2e0d';
         ctx.lineWidth = 2;
 
+        // Универсальная отрисовка скруглённого прямоугольника (работает во всех браузерах)
         ctx.beginPath();
-        ctx.roundRect(p.x, p.y, p.width, p.height, 8);
+        const r = 8;
+        ctx.moveTo(p.x + r, p.y);
+        ctx.lineTo(p.x + p.width - r, p.y);
+        ctx.quadraticCurveTo(p.x + p.width, p.y, p.x + p.width, p.y + r);
+        ctx.lineTo(p.x + p.width, p.y + p.height - r);
+        ctx.quadraticCurveTo(p.x + p.width, p.y + p.height, p.x + p.width - r, p.y + p.height);
+        ctx.lineTo(p.x + r, p.y + p.height);
+        ctx.quadraticCurveTo(p.x, p.y + p.height, p.x, p.y + p.height - r);
+        ctx.lineTo(p.x, p.y + r);
+        ctx.quadraticCurveTo(p.x, p.y, p.x + r, p.y);
+        ctx.closePath();
         ctx.fill();
         ctx.stroke();
 
+        // Глаз крокодила
         ctx.fillStyle = '#fff';
         ctx.beginPath();
         ctx.arc(p.x + 25, p.y, 6, 0, Math.PI * 2);
@@ -147,20 +175,26 @@
         ctx.lineWidth = 3;
         ctx.strokeStyle = '#222';
         ctx.stroke();
-        
+
         ctx.fillStyle = '#222';
-        ctx.font = '24px Arial';
+        ctx.font = '26px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText('👽', player.x + player.radius, player.y + player.radius + 8);
+        ctx.textBaseline = 'middle';
+        ctx.fillText('👽', player.x + player.radius, player.y + player.radius + 2);
         ctx.restore();
     }
 
     window.addEventListener('touchstart', (e) => {
-        const touchX = e.touches[0].clientX;
-        if (touchX < canvas.width / 2) {
-            player.vx = -6;
-        } else {
-            player.vx = 6;
+        if (e.touches && e.touches.length > 0) {
+            const touchX = e.touches[0].clientX;
+            player.vx = touchX < width / 2 ? -6 : 6;
+        }
+    });
+
+    window.addEventListener('touchmove', (e) => {
+        if (e.touches && e.touches.length > 0) {
+            const touchX = e.touches[0].clientX;
+            player.vx = touchX < width / 2 ? -6 : 6;
         }
     });
 
@@ -172,6 +206,7 @@
         if (e.key === 'ArrowLeft') player.vx = -6;
         if (e.key === 'ArrowRight') player.vx = 6;
     });
+
     window.addEventListener('keyup', () => {
         player.vx = 0;
     });
@@ -179,22 +214,22 @@
     function update() {
         if (isGameOver) return;
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.clearRect(0, 0, width, height);
 
         player.x += player.vx;
         player.vy += player.gravity;
         player.y += player.vy;
 
-        if (player.x + player.radius * 2 < 0) player.x = canvas.width;
-        if (player.x > canvas.width) player.x = -player.radius * 2;
+        if (player.x + player.radius * 2 < 0) player.x = width;
+        if (player.x > width) player.x = -player.radius * 2;
 
-        if (player.y < canvas.height / 2 && player.vy < 0) {
-            player.y = canvas.height / 2;
+        if (player.y < height / 2 && player.vy < 0) {
+            player.y = height / 2;
             platforms.forEach(p => {
                 p.y -= player.vy;
-                if (p.y > canvas.height) {
+                if (p.y > height) {
                     p.y = 0;
-                    p.x = Math.random() * (canvas.width - platformWidth);
+                    p.x = Math.random() * (width - platformWidth);
                     score += 10;
                     scoreElement.innerText = score;
                 }
@@ -208,16 +243,18 @@
                 player.x + player.radius * 1.5 > p.x &&
                 player.x + player.radius * 0.5 < p.x + p.width &&
                 player.y + player.radius * 2 >= p.y &&
-                player.y + player.radius * 2 <= p.y + p.height + 10
+                player.y + player.radius * 2 <= p.y + p.height + 12
             ) {
                 player.vy = player.jumpPower;
-                if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+                if (tg && tg.HapticFeedback) {
+                    tg.HapticFeedback.impactOccurred('light');
+                }
             }
         });
 
         drawPlayer();
 
-        if (player.y > canvas.height) {
+        if (player.y > height) {
             isGameOver = true;
             finalScoreElement.innerText = `Счёт: ${score}`;
             gameOverScreen.style.display = 'block';
@@ -231,9 +268,10 @@
         scoreElement.innerText = score;
         isGameOver = false;
         gameOverScreen.style.display = 'none';
-        player.x = canvas.width / 2 - 25;
-        player.y = canvas.height - 150;
+        player.x = width / 2 - 25;
+        player.y = height - 150;
         player.vy = 0;
+        player.vx = 0;
         createPlatforms();
         update();
     }
@@ -243,3 +281,6 @@
 </script>
 </body>
 </html>
+
+
+    
