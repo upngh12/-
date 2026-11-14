@@ -98,14 +98,17 @@
     let score = 0;
     let isGameOver = false;
 
+    // Сниженная чувствительность (скорость по горизонтали)
+    const MOVE_SPEED = 3.2;
+
     const player = {
         x: width / 2 - 25,
         y: height - 150,
         radius: 25,
         vx: 0,
         vy: 0,
-        gravity: 0.4,
-        jumpPower: -12
+        gravity: 0.38,
+        jumpPower: -11.5
     };
 
     let platforms = [];
@@ -137,7 +140,6 @@
         ctx.strokeStyle = '#1a2e0d';
         ctx.lineWidth = 2;
 
-        // Универсальная отрисовка скруглённого прямоугольника (работает во всех браузерах)
         ctx.beginPath();
         const r = 8;
         ctx.moveTo(p.x + r, p.y);
@@ -153,7 +155,6 @@
         ctx.fill();
         ctx.stroke();
 
-        // Глаз крокодила
         ctx.fillStyle = '#fff';
         ctx.beginPath();
         ctx.arc(p.x + 25, p.y, 6, 0, Math.PI * 2);
@@ -187,14 +188,14 @@
     window.addEventListener('touchstart', (e) => {
         if (e.touches && e.touches.length > 0) {
             const touchX = e.touches[0].clientX;
-            player.vx = touchX < width / 2 ? -6 : 6;
+            player.vx = touchX < width / 2 ? -MOVE_SPEED : MOVE_SPEED;
         }
     });
 
     window.addEventListener('touchmove', (e) => {
         if (e.touches && e.touches.length > 0) {
             const touchX = e.touches[0].clientX;
-            player.vx = touchX < width / 2 ? -6 : 6;
+            player.vx = touchX < width / 2 ? -MOVE_SPEED : MOVE_SPEED;
         }
     });
 
@@ -203,8 +204,8 @@
     });
 
     window.addEventListener('keydown', (e) => {
-        if (e.key === 'ArrowLeft') player.vx = -6;
-        if (e.key === 'ArrowRight') player.vx = 6;
+        if (e.key === 'ArrowLeft') player.vx = -MOVE_SPEED;
+        if (e.key === 'ArrowRight') player.vx = MOVE_SPEED;
     });
 
     window.addEventListener('keyup', () => {
@@ -220,8 +221,13 @@
         player.vy += player.gravity;
         player.y += player.vy;
 
-        if (player.x + player.radius * 2 < 0) player.x = width;
-        if (player.x > width) player.x = -player.radius * 2;
+        // Мгновенный перескок с одного края экрана на другой по центру игрока
+        const centerX = player.x + player.radius;
+        if (centerX < 0) {
+            player.x = width - player.radius;
+        } else if (centerX > width) {
+            player.x = -player.radius;
+        }
 
         if (player.y < height / 2 && player.vy < 0) {
             player.y = height / 2;
@@ -281,6 +287,3 @@
 </script>
 </body>
 </html>
-
-
-    
