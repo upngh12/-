@@ -8,21 +8,23 @@
 *{box-sizing:border-box;user-select:none;-webkit-user-select:none}
 body{margin:0;overflow:hidden;background:#d4f7b8;font-family:Arial,sans-serif;touch-action:none}
 canvas{display:block;width:100vw;height:100vh}
-#s{position:absolute;top:25px;width:100%;text-align:center;font-size:52px;font-weight:700;color:#222;pointer-events:none;z-index:10}
+#s{position:absolute;top:20px;width:100%;text-align:center;font-size:52px;font-weight:700;color:#222;pointer-events:none;z-index:10}
+#lives{position:absolute;top:80px;width:100%;text-align:center;font-size:26px;color:#ff3b30;pointer-events:none;z-index:10;letter-spacing:5px}
 #go{display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:30px;border-radius:20px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.25);z-index:20;width:80%;max-width:300px}
 button{background:#76c838;color:#fff;border:none;padding:15px;font-size:20px;border-radius:12px;margin-top:15px;font-weight:700;width:100%}
 #err{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.95);color:red;font-size:14px;padding:20px;display:none;z-index:999;overflow:auto;white-space:pre-wrap;font-family:monospace}
 </style>
 </head>
 <body>
-<!-- Блок для вывода ошибок, если что-то сломается -->
 <div id="err"></div>
-
 <div id="s">0</div>
+<div id="lives">🤍🤍🤍</div>
 <div id="go"><h2 style="margin:0">Игра окончена!</h2><p id="fs" style="font-size:20px">Счёт: 0</p><button onclick="rst()">Играть снова</button></div>
 <canvas id="c"></canvas>
 <script>
-// Перехватчик ошибок (чтобы видеть их на экране)
+const tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
+if (tg) { try { tg.ready(); tg.expand(); } catch(e) {} }
+
 window.onerror = function(msg, url, line) {
     var errDiv = document.getElementById('err');
     errDiv.style.display = 'block';
@@ -33,14 +35,23 @@ window.onerror = function(msg, url, line) {
 const c = document.getElementById('c');
 const x = c.getContext('2d');
 const sEl = document.getElementById('s');
+const livesEl = document.getElementById('lives');
 const goEl = document.getElementById('go');
 const fsEl = document.getElementById('fs');
 
 let W = 0, H = 0, sc = 0, over = 0, pls = [], bps = [], fsh = [], ltx = null, rafId = null;
+let lives = 0, invuln = 0;
 const p = { x: 0, y: 0, r: 25, vx: 0, vy: 0, g: .38, jp: -11.5, jt: 0 };
 const pW = 90, pH = 20;
 
-// 100% надежный расчет размера экрана
+function updateLives() {
+    let str = '';
+    for (let i = 0; i < 3; i++) {
+        str += i < lives ? '❤️' : '🤍';
+    }
+    livesEl.innerText = str;
+}
+
 function resize() {
     W = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth || 400;
     H = window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight || 600;
@@ -59,6 +70,12 @@ function gen(y, st) {
         let r = Math.random(), mc = .28 + d * .25, sc2 = mc + .25 + d * .15;
         if (r < mc) t = 'm';
         else if (r < sc2) t = 's';
+        
+        // Шанс выпадения блока с жизнью (10% среди обычных блоков, после 150 очков)
+        if (t === 'n' && sc > 150 && lives < 3 && Math.random() < 0.10) {
+            t = 'h';
+        }
+
         if (t === 'n' && Math.random() < (.22 - d * .1)) heli = 1;
         if (sc >= 150 && Math.random() < (.12 + d * .18))
             fsh.push({ x: Math.random() * Math.max(W - 70, 10) + 35, y: y - 35, r: 20, vx: (Math.random() < .5 ? 1 : -1) * (1.2 + d * 2.5) });
@@ -67,10 +84,10 @@ function gen(y, st) {
         x: st ? (W / 2 - pW / 2) : Math.random() * Math.max(W - pW, 10),
         y: y, 
         w: pW, 
-        h: pH, // Высота платформы
+        h: pH,
         t: t,
         vx: t === 'm' ? (2.2 + d * 2.5) * (Math.random() < .5 ? 1 : -1) : 0,
-        heli: heli, // Исправленный баг (раньше был h, что ломало высоту)
+        heli: heli,
         b: 0
     };
 }
@@ -82,6 +99,7 @@ function init() {
     p.x = W / 2 - 25; 
     p.y = H - 150;
     p.vy = 0; p.vx = 0; p.jt = 0;
+    invuln = 0;
 }
 
 function dHeli(hx, hy, sp) {
@@ -113,16 +131,28 @@ function dBody(bx, by, bw, bh, col) {
 
 function dCroc(o) {
     if (o.b) return; x.save();
-    let col = o.t === 'm' ? '#29b6f6' : (o.t === 's' ? '#9ccc65' : '#76c838');
+    // Если блок с жизнью, красим его в приятный розовый
+    let col = o.t === 'm' ? '#29b6f6' : (o.t === 's' ? '#9ccc65' : (o.t === 'h' ? '#ff6b81' : '#76c838'));
     dBody(o.x, o.y, o.w, o.h, col);
-    x.fillStyle = '#2e4d12'; for (let sx = o.x + 42; sx < o.x + o.w - 14; sx += 11) { x.beginPath(); x.arc(sx, o.y + 4, 2.5, 0, 7); x.fill(); }
-    x.fillStyle = '#fff'; x.strokeStyle = '#1b3009'; x.lineWidth = 2; x.beginPath(); x.arc(o.x + 24, o.y + 1, 7, 0, 7); x.fill(); x.stroke();
-    x.fillStyle = '#000'; x.beginPath(); x.arc(o.x + 25, o.y + 1, 2.8, 0, 7); x.fill();
-    x.strokeStyle = '#1b3009'; x.lineWidth = 1.5; x.beginPath(); x.moveTo(o.x + 6, o.y + 12); x.lineTo(o.x + 22, o.y + 12); x.stroke();
-    x.fillStyle = '#fff'; for (let tx = o.x + 8; tx <= o.x + 18; tx += 5) { x.beginPath(); x.moveTo(tx, o.y + 12); x.lineTo(tx + 2, o.y + 16); x.lineTo(tx + 4, o.y + 12); x.fill(); }
+    
+    if (o.t === 'h') {
+        // Рисуем сердечко вместо глаз
+        x.fillStyle = '#fff';
+        x.font = '18px Arial';
+        x.textAlign = 'center';
+        x.textBaseline = 'middle';
+        x.fillText('❤', o.x + o.w/2, o.y + o.h/2 + 2);
+    } else {
+        x.fillStyle = '#2e4d12'; for (let sx = o.x + 42; sx < o.x + o.w - 14; sx += 11) { x.beginPath(); x.arc(sx, o.y + 4, 2.5, 0, 7); x.fill(); }
+        x.fillStyle = '#fff'; x.strokeStyle = '#1b3009'; x.lineWidth = 2; x.beginPath(); x.arc(o.x + 24, o.y + 1, 7, 0, 7); x.fill(); x.stroke();
+        x.fillStyle = '#000'; x.beginPath(); x.arc(o.x + 25, o.y + 1, 2.8, 0, 7); x.fill();
+        x.strokeStyle = '#1b3009'; x.lineWidth = 1.5; x.beginPath(); x.moveTo(o.x + 6, o.y + 12); x.lineTo(o.x + 22, o.y + 12); x.stroke();
+        x.fillStyle = '#fff'; for (let tx = o.x + 8; tx <= o.x + 18; tx += 5) { x.beginPath(); x.moveTo(tx, o.y + 12); x.lineTo(tx + 2, o.y + 16); x.lineTo(tx + 4, o.y + 12); x.fill(); }
+    }
+
     if (o.t === 's') { x.strokeStyle = '#1b3009'; x.lineWidth = 2.5; x.beginPath(); let m = o.x + o.w / 2; x.moveTo(m - 2, o.y); x.lineTo(m + 4, o.y + 6); x.lineTo(m - 4, o.y + 13); x.lineTo(m + 2, o.y + o.h); x.stroke(); }
     x.restore(); 
-    if (o.heli) dHeli(o.x + o.w / 2, o.y, 0); // Исправлено на o.heli
+    if (o.heli) dHeli(o.x + o.w / 2, o.y, 0);
 }
 
 function clamp() {
@@ -144,9 +174,33 @@ function die() {
     rafId = null;
 }
 
+// Обработка урона и падения
+function hit(isFall) {
+    if (lives > 0) {
+        if (invuln <= 0) {
+            lives--;
+            updateLives();
+            invuln = 120; // 2 секунды неуязвимости (при 60 FPS)
+            if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('warning');
+        }
+        // Спасаем игрока от падения
+        if (isFall) {
+            p.y = H / 2;
+            p.vy = -10;
+            p.jt = 0; // Сбрасываем вертолет
+        } else {
+            p.vy = -12; // Отпрыгиваем от рыбы
+        }
+    } else {
+        die();
+    }
+}
+
 function loop() {
     if (over) return;
     x.clearRect(0, 0, W, H);
+
+    if (invuln > 0) invuln--;
 
     if (p.jt > 0) { p.jt--; p.vy = -14; } else p.vy += p.g;
     p.x += p.vx; p.y += p.vy; clamp();
@@ -168,7 +222,14 @@ function loop() {
         let f = fsh[i]; f.x += f.vx;
         if (f.x - f.r <= 0 || f.x + f.r >= W) f.vx *= -1;
         dFish(f);
-        if (p.jt <= 0 && Math.hypot(p.x + p.r - f.x, p.y + p.r - f.y) < p.r + f.r - 6) { die(); return; }
+        if (p.jt <= 0 && Math.hypot(p.x + p.r - f.x, p.y + p.r - f.y) < p.r + f.r - 6) {
+            if (invuln <= 0) {
+                hit(false);
+                if (over) return;
+            }
+            fsh.splice(i, 1); // Удаляем рыбу, чтобы не было повторного урона
+            continue;
+        }
         if (f.y > H + 50) fsh.splice(i, 1);
     }
 
@@ -176,10 +237,24 @@ function loop() {
         if (o.t === 'm' && !o.b) { o.x += o.vx; if (o.x <= 0 || o.x + o.w >= W) o.vx *= -1; }
         dCroc(o);
         
-        // Проверка на приземление
         if (!o.b && p.jt <= 0 && p.vy > 0 && p.x + p.r * 1.5 > o.x && p.x + p.r * .5 < o.x + o.w && p.y + p.r * 2 >= o.y && p.y + p.r * 2 <= o.y + o.h + 12) {
-            if (o.heli) { o.heli = 0; p.jt = 150; } // Исправлено на o.heli
-            else { p.vy = p.jp; }
+            if (o.t === 'h') {
+                if (lives < 3) {
+                    lives++;
+                    updateLives();
+                    if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+                }
+                o.t = 'n'; // Превращаем в обычный блок после использования
+                p.vy = p.jp;
+            } else if (o.heli) {
+                o.heli = 0; 
+                p.jt = 150;
+                if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+            } else {
+                p.vy = p.jp;
+                if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+            }
+            
             if (o.t === 's') { 
                 o.b = 1; 
                 bps.push(
@@ -190,26 +265,37 @@ function loop() {
         }
     });
 
-    // Отрисовка игрока
-    x.save(); let cx = p.x + p.r, cy = p.y + p.r;
-    x.beginPath(); x.arc(cx, cy, p.r, 0, 7); x.fillStyle = '#fff'; x.fill(); x.lineWidth = 3; x.strokeStyle = '#222'; x.stroke();
-    x.fillStyle = '#222'; x.font = '26px Arial'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('👽', cx, cy + 2);
-    if (p.jt > 0) dHeli(cx, p.y, 1); 
+    // Отрисовка игрока с миганием при неуязвимости
+    x.save(); 
+    let cx = p.x + p.r, cy = p.y + p.r;
+    
+    if (invuln > 0 && Math.floor(invuln / 5) % 2 === 0) {
+        // Пропускаем кадр, создавая эффект мигания
+    } else {
+        x.beginPath(); x.arc(cx, cy, p.r, 0, 7); x.fillStyle = '#fff'; x.fill(); x.lineWidth = 3; x.strokeStyle = '#222'; x.stroke();
+        x.fillStyle = '#222'; x.font = '26px Arial'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('👽', cx, cy + 2);
+        if (p.jt > 0) dHeli(cx, p.y, 1); 
+    }
     x.restore();
 
-    if (p.y > H) { die(); return; }
+    if (p.y > H) {
+        hit(true);
+        if (over) return;
+    }
+    
     rafId = requestAnimationFrame(loop);
 }
 
 window.rst = function() {
     sc = 0; sEl.innerText = 0; over = 0; goEl.style.display = 'none'; ltx = null;
+    lives = 0; updateLives();
     if (rafId) cancelAnimationFrame(rafId);
     init(); 
     rafId = requestAnimationFrame(loop);
 };
 
-// Запуск
 init();
+updateLives();
 rafId = requestAnimationFrame(loop);
 </script>
 </body>
