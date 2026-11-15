@@ -59,52 +59,44 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-// === ПЛАВНАЯ КРИВАЯ СЛОЖНОСТИ (растянута до 5000 очков) ===
 function diff() { return Math.min(sc / 5000, 1); }
 
 function gen(y, st) {
     let t = 'n', heli = 0, d = diff();
 
     if (!st) {
-        // === ПОЭТАПНОЕ ВВЕДЕНИЕ МЕХАНИК ===
         if (sc < 80) {
-            // Только обучение: обычные блоки
             t = 'n';
         } else if (sc < 200) {
-            // Плавно подключаем движущиеся
-            let progress = (sc - 80) / 120; // 0 → 1
-            if (Math.random() < 0.06 + progress * 0.14) t = 'm'; // 6% → 20%
+            let progress = (sc - 80) / 120;
+            if (Math.random() < 0.06 + progress * 0.14) t = 'm';
         } else if (sc < 400) {
-            // Подключаем хрупкие
             let r = Math.random();
             let movingChance = 0.20 + d * 0.10;
-            let breakChance = ((sc - 200) / 200) * 0.10; // 0% → 10%
+            let breakChance = ((sc - 200) / 200) * 0.10;
             if (r < movingChance) t = 'm';
             else if (r < movingChance + breakChance) t = 's';
         } else {
-            // Полный микс, плавный рост
             let r = Math.random();
-            let movingChance = 0.25 + d * 0.22;   // 25% → 47%
-            let breakChance = 0.10 + d * 0.10;    // 10% → 20%
+            let movingChance = 0.25 + d * 0.22;
+            let breakChance = 0.10 + d * 0.10;
             if (r < movingChance) t = 'm';
             else if (r < movingChance + breakChance) t = 's';
         }
 
-        // === Блок с сердечком (редкий, только когда нужен) ===
         if (t === 'n' && lives < 3 && sc > 200 && Math.random() < 0.06) {
             t = 'h';
         }
 
-        // === Вертолётик (плавно становится реже) ===
-        if (t === 'n' && Math.random() < 0.22 - d * 0.10) heli = 1;
+        // ИСПРАВЛЕНИЕ: Уменьшили шанс вертолётика (было 22%, стало 10%, и снижается до 4%)
+        if (t === 'n' && Math.random() < 0.10 - d * 0.06) heli = 1;
 
-        // === Рыбы (стартуют с 300, медленный рост) ===
         if (sc >= 300 && Math.random() < 0.05 + d * 0.17) {
             fsh.push({
                 x: Math.random() * Math.max(W - 70, 10) + 35,
                 y: y - 35,
                 r: 20,
-                vx: (Math.random() < .5 ? 1 : -1) * (1.0 + d * 2.0) // 1.0 → 3.0 (было 1.2 → 3.7)
+                vx: (Math.random() < .5 ? 1 : -1) * (1.0 + d * 2.0)
             });
         }
     }
@@ -112,16 +104,43 @@ function gen(y, st) {
     return {
         x: st ? (W / 2 - pW / 2) : Math.random() * Math.max(W - pW, 10),
         y: y, w: pW, h: pH, t: t,
-        vx: t === 'm' ? (1.6 + d * 2.0) * (Math.random() < .5 ? 1 : -1) : 0, // 1.6 → 3.6 (было 2.2 → 4.7)
+        vx: t === 'm' ? (1.6 + d * 2.0) * (Math.random() < .5 ? 1 : -1) : 0,
         heli: heli,
         b: 0
     };
 }
 
+// НОВАЯ ФУНКЦИЯ: Проверяет, чтобы новые блоки не спавнились друг на друге
+function safeGen(y, st) {
+    let newPlat = gen(y, st);
+    if (st) return newPlat;
+
+    let attempts = 0;
+    while (attempts < 30) {
+        let bad = false;
+        for (let o of pls) {
+            // Если блок находится рядом по высоте (в пределах 100 пикселей)
+            if (Math.abs(o.y - newPlat.y) < 100) {
+                // И если они пересекаются по горизонтали (с отступом в 15 пикселей)
+                if (newPlat.x < o.x + o.w + 15 && newPlat.x + newPlat.w > o.x - 15) {
+                    bad = true;
+                    break;
+                }
+            }
+        }
+        if (!bad) break;
+        
+        // Если пересекается, генерируем новую координату X и проверяем снова
+        newPlat.x = Math.random() * Math.max(W - pW, 10);
+        attempts++;
+    }
+    return newPlat;
+}
+
 function init() {
-    pls = [gen(H - 80, 1)];
+    pls = [safeGen(H - 80, 1)];
     bps = []; fsh = [];
-    for (let i = 1; i < 8; i++) pls.push(gen(H - i * (H / 8) - 80, 0));
+    for (let i = 1; i < 8; i++) pls.push(safeGen(H - i * (H / 8) - 80, 0));
     p.x = W / 2 - 25;
     p.y = H - 150;
     p.vy = 0; p.vx = 0; p.jt = 0;
@@ -161,7 +180,6 @@ function dCroc(o) {
     dBody(o.x, o.y, o.w, o.h, col);
 
     if (o.t === 'h') {
-        // Пульсирующее сердечко вместо глаз
         let pulse = 1 + Math.sin(Date.now() * 0.008) * 0.15;
         x.save();
         x.translate(o.x + o.w / 2, o.y + o.h / 2);
@@ -206,13 +224,10 @@ function die() {
 
 function hit(isFall) {
     if (isFall) {
-        // Всегда спасаем от падения, даже если уже invuln
         p.y = H / 2;
         p.vy = -6;
         p.jt = 0;
-
         if (invuln > 0) return;
-
         if (lives > 0) {
             lives--; updateLives();
             invuln = 120;
@@ -221,10 +236,8 @@ function hit(isFall) {
             die();
         }
     } else {
-        // Урон от рыбы
-        if (p.jt > 0) return; // Страховка: летишь — не бьёт
+        if (p.jt > 0) return;
         if (invuln > 0) return;
-
         if (lives > 0) {
             lives--; updateLives();
             invuln = 120;
@@ -247,7 +260,16 @@ function loop() {
 
     if (p.y < H / 2 && p.vy < 0) {
         p.y = H / 2; let gs = diff() * 18;
-        for (let i = pls.length - 1; i >= 0; i--) { let o = pls[i]; o.y -= p.vy; if (o.y > H) { pls[i] = gen(-gs, 0); sc += 10; sEl.innerText = sc; } }
+        for (let i = pls.length - 1; i >= 0; i--) { 
+            let o = pls[i]; 
+            o.y -= p.vy; 
+            if (o.y > H) { 
+                // ИСПРАВЛЕНИЕ: используем safeGen для замены блока
+                pls[i] = safeGen(-gs, 0); 
+                sc += 10; 
+                sEl.innerText = sc; 
+            } 
+        }
         for (let i = bps.length - 1; i >= 0; i--) bps[i].y -= p.vy;
         for (let i = fsh.length - 1; i >= 0; i--) fsh[i].y -= p.vy;
     }
@@ -303,11 +325,9 @@ function loop() {
         }
     });
 
-    // === Отрисовка игрока ===
     x.save();
     let cx = p.x + p.r, cy = p.y + p.r;
 
-    // Золотое свечение при полёте (визуальный индикатор неуязвимости)
     if (p.jt > 0) {
         let glow = 18 + Math.sin(Date.now() * 0.01) * 6;
         let grad = x.createRadialGradient(cx, cy, p.r * 0.5, cx, cy, p.r + glow);
@@ -319,7 +339,6 @@ function loop() {
         x.fill();
     }
 
-    // Мигание при invuln (после урона)
     if (invuln > 0 && Math.floor(invuln / 5) % 2 === 0) {
         // Пропускаем кадр
     } else {
