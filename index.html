@@ -9,7 +9,7 @@
 body{margin:0;overflow:hidden;background:#d4f7b8;font-family:Arial,sans-serif;touch-action:none}
 canvas{display:block;width:100vw;height:100vh}
 #s{position:absolute;top:20px;width:100%;text-align:center;font-size:52px;font-weight:700;color:#222;pointer-events:none;z-index:10}
-#lives{position:absolute;top:80px;width:100%;text-align:center;font-size:26px;color:#ff3b30;pointer-events:none;z-index:10;letter-spacing:5px}
+#lives{position:absolute;top:82px;width:100%;text-align:center;font-size:26px;pointer-events:none;z-index:10;letter-spacing:5px}
 #go{display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:30px;border-radius:20px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.25);z-index:20;width:80%;max-width:300px}
 button{background:#76c838;color:#fff;border:none;padding:15px;font-size:20px;border-radius:12px;margin-top:15px;font-weight:700;width:100%}
 #err{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.95);color:red;font-size:14px;padding:20px;display:none;z-index:999;overflow:auto;white-space:pre-wrap;font-family:monospace}
@@ -46,47 +46,73 @@ const pW = 90, pH = 20;
 
 function updateLives() {
     let str = '';
-    for (let i = 0; i < 3; i++) {
-        str += i < lives ? '❤️' : '🤍';
-    }
+    for (let i = 0; i < 3; i++) str += i < lives ? '❤️' : '🤍';
     livesEl.innerText = str;
 }
 
 function resize() {
     W = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth || 400;
     H = window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight || 600;
-    c.width = W;
-    c.height = H;
+    c.width = W; c.height = H;
     if (typeof clamp === 'function') clamp();
 }
 window.addEventListener('resize', resize);
 resize();
 
-function diff() { return Math.min(sc / 3000, 1); }
+// === ПЛАВНАЯ КРИВАЯ СЛОЖНОСТИ (растянута до 5000 очков) ===
+function diff() { return Math.min(sc / 5000, 1); }
 
 function gen(y, st) {
     let t = 'n', heli = 0, d = diff();
+
     if (!st) {
-        let r = Math.random(), mc = .28 + d * .25, sc2 = mc + .25 + d * .15;
-        if (r < mc) t = 'm';
-        else if (r < sc2) t = 's';
-        
-        // Шанс выпадения блока с жизнью (10% среди обычных блоков, после 150 очков)
-        if (t === 'n' && sc > 150 && lives < 3 && Math.random() < 0.10) {
+        // === ПОЭТАПНОЕ ВВЕДЕНИЕ МЕХАНИК ===
+        if (sc < 80) {
+            // Только обучение: обычные блоки
+            t = 'n';
+        } else if (sc < 200) {
+            // Плавно подключаем движущиеся
+            let progress = (sc - 80) / 120; // 0 → 1
+            if (Math.random() < 0.06 + progress * 0.14) t = 'm'; // 6% → 20%
+        } else if (sc < 400) {
+            // Подключаем хрупкие
+            let r = Math.random();
+            let movingChance = 0.20 + d * 0.10;
+            let breakChance = ((sc - 200) / 200) * 0.10; // 0% → 10%
+            if (r < movingChance) t = 'm';
+            else if (r < movingChance + breakChance) t = 's';
+        } else {
+            // Полный микс, плавный рост
+            let r = Math.random();
+            let movingChance = 0.25 + d * 0.22;   // 25% → 47%
+            let breakChance = 0.10 + d * 0.10;    // 10% → 20%
+            if (r < movingChance) t = 'm';
+            else if (r < movingChance + breakChance) t = 's';
+        }
+
+        // === Блок с сердечком (редкий, только когда нужен) ===
+        if (t === 'n' && lives < 3 && sc > 200 && Math.random() < 0.06) {
             t = 'h';
         }
 
-        if (t === 'n' && Math.random() < (.22 - d * .1)) heli = 1;
-        if (sc >= 150 && Math.random() < (.12 + d * .18))
-            fsh.push({ x: Math.random() * Math.max(W - 70, 10) + 35, y: y - 35, r: 20, vx: (Math.random() < .5 ? 1 : -1) * (1.2 + d * 2.5) });
+        // === Вертолётик (плавно становится реже) ===
+        if (t === 'n' && Math.random() < 0.22 - d * 0.10) heli = 1;
+
+        // === Рыбы (стартуют с 300, медленный рост) ===
+        if (sc >= 300 && Math.random() < 0.05 + d * 0.17) {
+            fsh.push({
+                x: Math.random() * Math.max(W - 70, 10) + 35,
+                y: y - 35,
+                r: 20,
+                vx: (Math.random() < .5 ? 1 : -1) * (1.0 + d * 2.0) // 1.0 → 3.0 (было 1.2 → 3.7)
+            });
+        }
     }
+
     return {
         x: st ? (W / 2 - pW / 2) : Math.random() * Math.max(W - pW, 10),
-        y: y, 
-        w: pW, 
-        h: pH,
-        t: t,
-        vx: t === 'm' ? (2.2 + d * 2.5) * (Math.random() < .5 ? 1 : -1) : 0,
+        y: y, w: pW, h: pH, t: t,
+        vx: t === 'm' ? (1.6 + d * 2.0) * (Math.random() < .5 ? 1 : -1) : 0, // 1.6 → 3.6 (было 2.2 → 4.7)
         heli: heli,
         b: 0
     };
@@ -96,7 +122,7 @@ function init() {
     pls = [gen(H - 80, 1)];
     bps = []; fsh = [];
     for (let i = 1; i < 8; i++) pls.push(gen(H - i * (H / 8) - 80, 0));
-    p.x = W / 2 - 25; 
+    p.x = W / 2 - 25;
     p.y = H - 150;
     p.vy = 0; p.vx = 0; p.jt = 0;
     invuln = 0;
@@ -131,17 +157,21 @@ function dBody(bx, by, bw, bh, col) {
 
 function dCroc(o) {
     if (o.b) return; x.save();
-    // Если блок с жизнью, красим его в приятный розовый
     let col = o.t === 'm' ? '#29b6f6' : (o.t === 's' ? '#9ccc65' : (o.t === 'h' ? '#ff6b81' : '#76c838'));
     dBody(o.x, o.y, o.w, o.h, col);
-    
+
     if (o.t === 'h') {
-        // Рисуем сердечко вместо глаз
+        // Пульсирующее сердечко вместо глаз
+        let pulse = 1 + Math.sin(Date.now() * 0.008) * 0.15;
+        x.save();
+        x.translate(o.x + o.w / 2, o.y + o.h / 2);
+        x.scale(pulse, pulse);
         x.fillStyle = '#fff';
         x.font = '18px Arial';
         x.textAlign = 'center';
         x.textBaseline = 'middle';
-        x.fillText('❤', o.x + o.w/2, o.y + o.h/2 + 2);
+        x.fillText('❤', 0, 2);
+        x.restore();
     } else {
         x.fillStyle = '#2e4d12'; for (let sx = o.x + 42; sx < o.x + o.w - 14; sx += 11) { x.beginPath(); x.arc(sx, o.y + 4, 2.5, 0, 7); x.fill(); }
         x.fillStyle = '#fff'; x.strokeStyle = '#1b3009'; x.lineWidth = 2; x.beginPath(); x.arc(o.x + 24, o.y + 1, 7, 0, 7); x.fill(); x.stroke();
@@ -151,7 +181,7 @@ function dCroc(o) {
     }
 
     if (o.t === 's') { x.strokeStyle = '#1b3009'; x.lineWidth = 2.5; x.beginPath(); let m = o.x + o.w / 2; x.moveTo(m - 2, o.y); x.lineTo(m + 4, o.y + 6); x.lineTo(m - 4, o.y + 13); x.lineTo(m + 2, o.y + o.h); x.stroke(); }
-    x.restore(); 
+    x.restore();
     if (o.heli) dHeli(o.x + o.w / 2, o.y, 0);
 }
 
@@ -168,31 +198,41 @@ window.onkeyup = () => { p.vx = 0; };
 
 function die() {
     over = 1;
-    fsEl.innerText = 'Счёт: ' + sc; 
+    fsEl.innerText = 'Счёт: ' + sc;
     goEl.style.display = 'block';
-    if (rafId) cancelAnimationFrame(rafId); 
+    if (rafId) cancelAnimationFrame(rafId);
     rafId = null;
 }
 
-// Обработка урона и падения
 function hit(isFall) {
-    if (lives > 0) {
-        if (invuln <= 0) {
-            lives--;
-            updateLives();
-            invuln = 120; // 2 секунды неуязвимости (при 60 FPS)
+    if (isFall) {
+        // Всегда спасаем от падения, даже если уже invuln
+        p.y = H / 2;
+        p.vy = -6;
+        p.jt = 0;
+
+        if (invuln > 0) return;
+
+        if (lives > 0) {
+            lives--; updateLives();
+            invuln = 120;
             if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('warning');
-        }
-        // Спасаем игрока от падения
-        if (isFall) {
-            p.y = H / 2;
-            p.vy = -10;
-            p.jt = 0; // Сбрасываем вертолет
         } else {
-            p.vy = -12; // Отпрыгиваем от рыбы
+            die();
         }
     } else {
-        die();
+        // Урон от рыбы
+        if (p.jt > 0) return; // Страховка: летишь — не бьёт
+        if (invuln > 0) return;
+
+        if (lives > 0) {
+            lives--; updateLives();
+            invuln = 120;
+            p.vy = -12;
+            if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('warning');
+        } else {
+            die();
+        }
     }
 }
 
@@ -227,7 +267,7 @@ function loop() {
                 hit(false);
                 if (over) return;
             }
-            fsh.splice(i, 1); // Удаляем рыбу, чтобы не было повторного урона
+            fsh.splice(i, 1);
             continue;
         }
         if (f.y > H + 50) fsh.splice(i, 1);
@@ -236,45 +276,56 @@ function loop() {
     pls.forEach(o => {
         if (o.t === 'm' && !o.b) { o.x += o.vx; if (o.x <= 0 || o.x + o.w >= W) o.vx *= -1; }
         dCroc(o);
-        
+
         if (!o.b && p.jt <= 0 && p.vy > 0 && p.x + p.r * 1.5 > o.x && p.x + p.r * .5 < o.x + o.w && p.y + p.r * 2 >= o.y && p.y + p.r * 2 <= o.y + o.h + 12) {
             if (o.t === 'h') {
                 if (lives < 3) {
-                    lives++;
-                    updateLives();
+                    lives++; updateLives();
                     if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
                 }
-                o.t = 'n'; // Превращаем в обычный блок после использования
+                o.t = 'n';
                 p.vy = p.jp;
             } else if (o.heli) {
-                o.heli = 0; 
+                o.heli = 0;
                 p.jt = 150;
                 if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
             } else {
                 p.vy = p.jp;
                 if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
             }
-            
-            if (o.t === 's') { 
-                o.b = 1; 
+            if (o.t === 's') {
+                o.b = 1;
                 bps.push(
-                    { x: o.x, y: o.y, w: o.w / 2, h: o.h, vx: -1.5, vy: 1, rot: 0, vr: -.05 }, 
+                    { x: o.x, y: o.y, w: o.w / 2, h: o.h, vx: -1.5, vy: 1, rot: 0, vr: -.05 },
                     { x: o.x + o.w / 2, y: o.y, w: o.w / 2, h: o.h, vx: 1.5, vy: 1, rot: 0, vr: .05 }
-                ); 
+                );
             }
         }
     });
 
-    // Отрисовка игрока с миганием при неуязвимости
-    x.save(); 
+    // === Отрисовка игрока ===
+    x.save();
     let cx = p.x + p.r, cy = p.y + p.r;
-    
+
+    // Золотое свечение при полёте (визуальный индикатор неуязвимости)
+    if (p.jt > 0) {
+        let glow = 18 + Math.sin(Date.now() * 0.01) * 6;
+        let grad = x.createRadialGradient(cx, cy, p.r * 0.5, cx, cy, p.r + glow);
+        grad.addColorStop(0, 'rgba(255, 200, 0, 0.55)');
+        grad.addColorStop(1, 'rgba(255, 200, 0, 0)');
+        x.fillStyle = grad;
+        x.beginPath();
+        x.arc(cx, cy, p.r + glow, 0, 7);
+        x.fill();
+    }
+
+    // Мигание при invuln (после урона)
     if (invuln > 0 && Math.floor(invuln / 5) % 2 === 0) {
-        // Пропускаем кадр, создавая эффект мигания
+        // Пропускаем кадр
     } else {
         x.beginPath(); x.arc(cx, cy, p.r, 0, 7); x.fillStyle = '#fff'; x.fill(); x.lineWidth = 3; x.strokeStyle = '#222'; x.stroke();
         x.fillStyle = '#222'; x.font = '26px Arial'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('👽', cx, cy + 2);
-        if (p.jt > 0) dHeli(cx, p.y, 1); 
+        if (p.jt > 0) dHeli(cx, p.y, 1);
     }
     x.restore();
 
@@ -282,7 +333,7 @@ function loop() {
         hit(true);
         if (over) return;
     }
-    
+
     rafId = requestAnimationFrame(loop);
 }
 
@@ -290,7 +341,7 @@ window.rst = function() {
     sc = 0; sEl.innerText = 0; over = 0; goEl.style.display = 'none'; ltx = null;
     lives = 0; updateLives();
     if (rafId) cancelAnimationFrame(rafId);
-    init(); 
+    init();
     rafId = requestAnimationFrame(loop);
 };
 
